@@ -2,7 +2,9 @@ package filestore
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -22,11 +24,12 @@ type Store struct {
 	db   *sql.DB
 	log  *zap.Logger
 	stmt struct {
-		registerAgent     *sql.Stmt
-		verifyAgentToken  *sql.Stmt
-		getAgentBySession *sql.Stmt
-		getAgentByID      *sql.Stmt
-		allAgents         *sql.Stmt
+		registerAgent         *sql.Stmt
+		verifyAgentToken      *sql.Stmt
+		getAgentByTokenLookup  *sql.Stmt
+		getAgentBySession     *sql.Stmt
+		getAgentByID          *sql.Stmt
+		allAgents             *sql.Stmt
 		updateAgentSession *sql.Stmt
 		touchAgent        *sql.Stmt
 		createFile        *sql.Stmt
@@ -72,8 +75,9 @@ func NewStore(dbPath string, log *zap.Logger) (*Store, error) {
 		return st
 	}
 
-	s.stmt.registerAgent = prep("INSERT OR REPLACE INTO agents (agent_id, token_hash, session_id, created_at, last_seen) VALUES (?, ?, ?, ?, ?)")
+	s.stmt.registerAgent = prep("INSERT INTO agents (agent_id, token_hash, token_lookup, session_id, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?)")
 	s.stmt.verifyAgentToken = prep("SELECT token_hash FROM agents WHERE agent_id = ?")
+	s.stmt.getAgentByTokenLookup = prep("SELECT agent_id, token_hash, session_id, created_at, last_seen FROM agents WHERE token_lookup = ?")
 	s.stmt.getAgentBySession = prep("SELECT agent_id, session_id, created_at, last_seen FROM agents WHERE session_id = ?")
 	s.stmt.getAgentByID = prep("SELECT agent_id, session_id, created_at, last_seen FROM agents WHERE agent_id = ?")
 	s.stmt.allAgents = prep("SELECT agent_id, token_hash, session_id, created_at, last_seen FROM agents")
@@ -96,7 +100,7 @@ func NewStore(dbPath string, log *zap.Logger) (*Store, error) {
 func (s *Store) Close() error {
 	st := &s.stmt
 	for _, st := range []*sql.Stmt{
-		st.registerAgent, st.verifyAgentToken, st.getAgentBySession, st.getAgentByID, st.allAgents,
+		st.registerAgent, st.verifyAgentToken, st.getAgentByTokenLookup, st.getAgentBySession, st.getAgentByID, st.allAgents,
 		st.updateAgentSession, st.touchAgent, st.createFile, st.completeUpload,
 		st.revertToPending, st.getFileByID, st.getFileByShareID, st.getFileByDLToken,
 		st.deleteFile, st.expireFiles, st.listAgents, st.expiredFileIDs,
@@ -110,9 +114,9 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-func (s *Store) RegisterAgent(agentID, tokenHash, sessionID string) error {
+func (s *Store) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	now := time.Now().UTC()
-	_, err := s.stmt.registerAgent.Exec(agentID, tokenHash, sessionID, now, now)
+	_, err := s.stmt.registerAgent.Exec(agentID, tokenHash, tokenLookup, sessionID, now, now)
 	return err
 }
 
@@ -132,23 +136,25 @@ func (s *Store) VerifyAgentToken(agentID, token string) (bool, error) {
 }
 
 func (s *Store) VerifyAnyToken(token string) (*Agent, error) {
-	rows, err := s.stmt.allAgents.Query()
-	if err != nil {
+	lookup := tokenLookupHash(token)
+	row := s.stmt.getAgentByTokenLookup.QueryRow(lookup)
+	var a Agent
+	var hash string
+	if err := row.Scan(&a.AgentID, &hash, &a.SessionID, &a.CreatedAt, &a.LastSeen); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var a Agent
-		var hash string
-		if err := rows.Scan(&a.AgentID, &hash, &a.SessionID, &a.CreatedAt, &a.LastSeen); err != nil {
-			continue
-		}
-		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(token)) == nil {
-			return &a, nil
-		}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(token)) != nil {
+		return nil, nil
 	}
-	return nil, nil
+	return &a, nil
+}
+
+func tokenLookupHash(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }
 
 func (s *Store) GetAgentBySession(sessionID string) (*Agent, error) {
@@ -308,7 +314,7 @@ func (s *Store) SearchFiles(query, agentID string, limit int) ([]FileMetadata, e
 	args = append(args, model.StatusReady)
 
 	if ftsQuery != "" {
-		conds = append(conds, "files_fts MATCH ?")
+		conds = append(conds, "fts MATCH ?")
 		args = append(args, ftsQuery)
 	}
 	if agentID != "" {

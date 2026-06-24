@@ -2,6 +2,7 @@ package agent
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -11,7 +12,7 @@ import (
 
 type Store interface {
 	GetAgentBySession(sessionID string) (*filestore.Agent, error)
-	RegisterAgent(agentID, tokenHash, sessionID string) error
+	RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error
 	VerifyAnyToken(token string) (*filestore.Agent, error)
 }
 
@@ -49,7 +50,10 @@ func (m *Manager) RegisterOrGet(sessionID string) (agentID, agentToken string, e
 	}
 	agentID = "agent_" + hex.EncodeToString(idBytes)
 
-	if err := m.store.RegisterAgent(agentID, string(hash), sessionID); err != nil {
+	lookupHash := sha256.Sum256([]byte(agentToken))
+	tokenLookup := hex.EncodeToString(lookupHash[:])
+
+	if err := m.store.RegisterAgent(agentID, string(hash), tokenLookup, sessionID); err != nil {
 		return "", "", fmt.Errorf("register agent: %w", err)
 	}
 
