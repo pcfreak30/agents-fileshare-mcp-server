@@ -51,7 +51,7 @@ func (nt NullTime) MarshalJSON() ([]byte, error) {
 }
 
 type AgentStore interface {
-	RegisterAgent(agentID, tokenHash, sessionID string) error
+	RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error
 	VerifyAnyToken(token string) (*Agent, error)
 	GetAgentBySession(sessionID string) (*Agent, error)
 }
