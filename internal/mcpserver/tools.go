@@ -253,14 +253,20 @@ func (s *Server) HandleListAgents(ctx context.Context) (*ListAgentsOutput, error
 }
 
 func (s *Server) HandleWhoami(ctx context.Context) (*WhoamiOutput, error) {
-	a, err := s.getAgentFromCtx(ctx)
+	sessionID, _ := ctx.Value(sessionIDKey{}).(string)
+	if sessionID == "" {
+		return nil, fmt.Errorf(model.ErrNotAuthenticated)
+	}
+
+	agentID, agentToken, err := s.agents.RegisterOrGet(sessionID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("agent registration: %w", err)
 	}
 
 	return &WhoamiOutput{
-		AgentID:   a.AgentID,
-		SessionID: a.SessionID,
+		AgentID:   agentID,
+		SessionID: sessionID,
+		Token:     agentToken,
 	}, nil
 }
 

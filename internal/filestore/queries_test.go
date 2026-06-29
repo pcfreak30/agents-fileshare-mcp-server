@@ -35,7 +35,7 @@ func newTestStore(t *testing.T) *Store {
 func TestStore_RegisterAndGetAgent(t *testing.T) {
 	s := newTestStore(t)
 
-	err := s.RegisterAgent("agent_01", "hashedtoken", "sess_abc")
+	err := s.RegisterAgent("agent_01", "hashedtoken", "lookup_agent_01", "sess_abc")
 	if err != nil {
 		t.Fatalf("RegisterAgent: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestStore_VerifyAgentToken(t *testing.T) {
 	s := newTestStore(t)
 	token := "secret123"
 	hash, _ := hashBcrypt(token)
-	s.RegisterAgent("agent_03", hash, "sess_ghi")
+	s.RegisterAgent("agent_03", hash, "lookup_agent_03", "sess_ghi")
 
 	ok, err := s.VerifyAgentToken("agent_03", token)
 	if err != nil {
@@ -117,11 +117,11 @@ func TestStore_VerifyAnyToken(t *testing.T) {
 	s := newTestStore(t)
 	token1 := "token_one"
 	hash1, _ := hashBcrypt(token1)
-	s.RegisterAgent("agent_a", hash1, "sess_1")
+	s.RegisterAgent("agent_a", hash1, "lookup_agent_a", "sess_1")
 
 	token2 := "token_two"
 	hash2, _ := hashBcrypt(token2)
-	s.RegisterAgent("agent_b", hash2, "sess_2")
+	s.RegisterAgent("agent_b", hash2, "lookup_agent_b", "sess_2")
 
 	a, err := s.VerifyAnyToken(token1)
 	if err != nil {

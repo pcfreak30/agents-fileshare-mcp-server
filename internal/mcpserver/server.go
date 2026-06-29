@@ -23,44 +23,44 @@ func NewMCPServer(store filestore.FileStore, agents *agent.Manager, cfg *config.
 
 func (ms *MCPServer) RegisterTools(s *mcp.Server) {
 	mcp.AddTool(s, &mcp.Tool{
+		Name:        "whoami",
+		Description: "Register or identify the current agent. Call this FIRST before any other tool. Returns an auth token on first call (new agents) that must be used as 'Authorization: Bearer <token>' in the PUT upload request. For existing agents the token is empty (already obtained previously).",
+	}, ms.handleWhoami)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "prepare_upload",
-		Description: "Create a pending upload slot and get upload credentials",
+		Description: "Create a pending upload slot and get the upload URL. Call whoami first to get your auth token. After preparing, PUT the file bytes to upload_url with 'Authorization: Bearer <token>' header. The file must be uploaded before the expires_at timestamp.",
 	}, ms.handlePrepareUpload)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_files",
-		Description: "List files, optionally filtered by agent or status",
+		Description: "List files, optionally filtered by agent or status. Returns files with metadata and a total count.",
 	}, ms.handleListFiles)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_file_info",
-		Description: "Get full metadata for a specific file",
+		Description: "Get full metadata for a specific file by file_id, including download URL and download token (if token visibility).",
 	}, ms.handleGetFileInfo)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_file_link",
-		Description: "Get a shareable download link for a file",
+		Description: "Get a shareable download link for a file. For token-visibility files, includes a download token that must be passed as a query parameter.",
 	}, ms.handleGetFileLink)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "delete_file",
-		Description: "Delete a file. Only the uploading agent can delete their own files",
+		Description: "Delete a file. Only the uploading agent can delete their own files.",
 	}, ms.handleDeleteFile)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_files",
-		Description: "Search files by filename substring",
+		Description: "Search files by filename substring using FTS5 full-text search.",
 	}, ms.handleSearchFiles)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_agents",
-		Description: "List all agents that have uploaded files",
+		Description: "List all agents that have uploaded files, with file counts and total sizes.",
 	}, ms.handleListAgents)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "whoami",
-		Description: "Get the current agent's identity and token",
-	}, ms.handleWhoami)
 }
 
 func handleTool[I any, O any](ctx context.Context, req *mcp.CallToolRequest, in I, fn func(context.Context, I) (*O, error)) (*mcp.CallToolResult, O, error) {
@@ -107,30 +107,4 @@ func (ms *MCPServer) handleWhoami(ctx context.Context, req *mcp.CallToolRequest,
 	return handleTool(ctx, req, in, func(ctx context.Context, _ struct{}) (*WhoamiOutput, error) {
 		return ms.srv.HandleWhoami(ctx)
 	})
-}
-
-type AgentRegistrator interface {
-	RegisterOrGet(sessionID string) (agentID, agentToken string, err error)
-}
-
-func InitializedHandler(agents AgentRegistrator, log *zap.Logger) func(context.Context, *mcp.InitializedRequest) {
-	return func(ctx context.Context, req *mcp.InitializedRequest) {
-		sessionID := req.Session.ID()
-		if sessionID == "" {
-			log.Warn("initialized without session ID")
-			return
-		}
-
-		agentID, agentToken, err := agents.RegisterOrGet(sessionID)
-		if err != nil {
-			log.Error("register agent on init", zap.Error(err), zap.String("session_id", sessionID))
-			return
-		}
-
-		log.Info("agent initialized",
-			zap.String("agent_id", agentID),
-			zap.String("session_id", sessionID),
-			zap.Bool("new_agent", agentToken != ""),
-		)
-	}
 }
