@@ -6,10 +6,10 @@ import (
 )
 
 type PrepareUploadInput struct {
-	Filename    string `json:"filename" jsonschema:"required,description=Name of the file to upload (max 255 chars)"`
-	ContentType string `json:"content_type" jsonschema:"required,description=MIME type of the file"`
-	TTL         string `json:"ttl" jsonschema:"description=Time-to-live duration string (e.g. 24h, 72h). Default: 72h, Max: 168h"`
-	Visibility  string `json:"visibility" jsonschema:"description=Access visibility: public, agent, or token. Default: public"`
+	Filename    string `json:"filename" jsonschema:"Name of the file to upload (max 255 chars)"`
+	ContentType string `json:"content_type" jsonschema:"MIME type of the file"`
+	TTL         string `json:"ttl,omitempty" jsonschema:"Time-to-live duration string (e.g. 24h, 72h). Default: 72h, Max: 168h"`
+	Visibility  string `json:"visibility,omitempty" jsonschema:"Access visibility: public, agent, or token. Default: public"`
 }
 
 type PrepareUploadOutput struct {
@@ -20,10 +20,10 @@ type PrepareUploadOutput struct {
 }
 
 type ListFilesInput struct {
-	Agent  string `json:"agent" jsonschema:"description=Filter by agent_id"`
-	Status string `json:"status" jsonschema:"description=Filter by status: ready, pending, or expired. Default: ready"`
-	Limit  int    `json:"limit" jsonschema:"description=Maximum results. Default: 50, Max: 200"`
-	Offset int    `json:"offset" jsonschema:"description=Result offset. Default: 0"`
+	Agent  string `json:"agent,omitempty" jsonschema:"Filter by agent_id"`
+	Status string `json:"status,omitempty" jsonschema:"Filter by status: ready, pending, or expired. Default: ready"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum results. Default: 50, Max: 200"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Result offset. Default: 0"`
 }
 
 type ListFilesOutput struct {
@@ -32,7 +32,7 @@ type ListFilesOutput struct {
 }
 
 type GetFileInfoInput struct {
-	FileID string `json:"file_id" jsonschema:"required,description=The file ID to get info for"`
+	FileID string `json:"file_id" jsonschema:"The file ID to get info for"`
 }
 
 type GetFileInfoOutput struct {
@@ -52,7 +52,7 @@ type GetFileInfoOutput struct {
 }
 
 type GetFileLinkInput struct {
-	FileID string `json:"file_id" jsonschema:"required,description=The file ID to get a link for"`
+	FileID string `json:"file_id" jsonschema:"The file ID to get a link for"`
 }
 
 type GetFileLinkOutput struct {
@@ -62,7 +62,7 @@ type GetFileLinkOutput struct {
 }
 
 type DeleteFileInput struct {
-	FileID string `json:"file_id" jsonschema:"required,description=The file ID to delete"`
+	FileID string `json:"file_id" jsonschema:"The file ID to delete"`
 }
 
 type DeleteFileOutput struct {
@@ -71,9 +71,9 @@ type DeleteFileOutput struct {
 }
 
 type SearchFilesInput struct {
-	Query string `json:"query" jsonschema:"required,description=Filename substring to search for"`
-	Agent string `json:"agent" jsonschema:"description=Filter by agent_id"`
-	Limit int    `json:"limit" jsonschema:"description=Maximum results. Default: 20, Max: 100"`
+	Query string `json:"query" jsonschema:"Filename substring to search for"`
+	Agent string `json:"agent,omitempty" jsonschema:"Filter by agent_id"`
+	Limit int    `json:"limit,omitempty" jsonschema:"Maximum results. Default: 20, Max: 100"`
 }
 
 type SearchFilesOutput struct {
@@ -87,4 +87,5 @@ type ListAgentsOutput struct {
 type WhoamiOutput struct {
 	AgentID   string `json:"agent_id"`
 	SessionID string `json:"session_id"`
+	Token     string `json:"token,omitempty"`
 }
