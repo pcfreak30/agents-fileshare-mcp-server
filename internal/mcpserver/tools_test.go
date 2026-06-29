@@ -293,11 +293,25 @@ func TestServer_HandleWhoami_NotAuthenticated(t *testing.T) {
 	}
 }
 
-func TestServer_HandleWhoami_WithSession(t *testing.T) {
+func TestServer_HandleWhoami_NewAgent(t *testing.T) {
 	store := testutil.NewTestStore()
+	var registered bool
 	agentStore := &mockAgentStore{
 		getAgentBySessionFn: func(sessionID string) (*filestore.Agent, error) {
-			return &filestore.Agent{AgentID: "agent_who", SessionID: sessionID}, nil
+			return nil, nil // new agent
+		},
+		registerAgentFn: func(agentID, tokenHash, tokenLookup, sessionID string) error {
+			registered = true
+			if agentID == "" {
+				t.Error("expected non-empty agentID")
+			}
+			if tokenHash == "" {
+				t.Error("expected non-empty tokenHash")
+			}
+			if tokenLookup == "" {
+				t.Error("expected non-empty tokenLookup")
+			}
+			return nil
 		},
 	}
 	agents := agent.NewManager(agentStore)
@@ -308,17 +322,52 @@ func TestServer_HandleWhoami_WithSession(t *testing.T) {
 		log:    testutil.NewTestLogger(),
 		fs:     testutil.NewMemFS(),
 	}
-	ctx := ctxWithSession("sess_who")
+	ctx := ctxWithSession("sess_new")
 
 	out, err := srv.HandleWhoami(ctx)
 	if err != nil {
 		t.Fatalf("HandleWhoami: %v", err)
 	}
-	if out.AgentID != "agent_who" {
-		t.Errorf("AgentID = %q, want %q", out.AgentID, "agent_who")
+	if !registered {
+		t.Error("expected RegisterAgent to be called")
 	}
-	if out.SessionID != "sess_who" {
-		t.Errorf("SessionID = %q, want %q", out.SessionID, "sess_who")
+	if out.AgentID == "" {
+		t.Error("expected non-empty AgentID")
+	}
+	if out.SessionID != "sess_new" {
+		t.Errorf("SessionID = %q, want %q", out.SessionID, "sess_new")
+	}
+	if out.Token == "" {
+		t.Error("expected non-empty Token for new agent")
+	}
+}
+
+func TestServer_HandleWhoami_ExistingAgent(t *testing.T) {
+	store := testutil.NewTestStore()
+	agentStore := &mockAgentStore{
+		getAgentBySessionFn: func(sessionID string) (*filestore.Agent, error) {
+			return &filestore.Agent{AgentID: "agent_existing", SessionID: sessionID}, nil
+		},
+	}
+	agents := agent.NewManager(agentStore)
+	srv := &Server{
+		store:  store,
+		agents: agents,
+		cfg:    testutil.NewTestConfig(),
+		log:    testutil.NewTestLogger(),
+		fs:     testutil.NewMemFS(),
+	}
+	ctx := ctxWithSession("sess_existing")
+
+	out, err := srv.HandleWhoami(ctx)
+	if err != nil {
+		t.Fatalf("HandleWhoami: %v", err)
+	}
+	if out.AgentID != "agent_existing" {
+		t.Errorf("AgentID = %q, want %q", out.AgentID, "agent_existing")
+	}
+	if out.Token != "" {
+		t.Errorf("expected empty Token for existing agent, got %q", out.Token)
 	}
 }
 
@@ -471,7 +520,7 @@ func TestServer_HandlePrepareUpload_StoreError(t *testing.T) {
 
 type mockAgentStore struct {
 	getAgentBySessionFn func(sessionID string) (*filestore.Agent, error)
-	registerAgentFn     func(agentID, tokenHash, sessionID string) error
+	registerAgentFn     func(agentID, tokenHash, tokenLookup, sessionID string) error
 	verifyAnyTokenFn    func(token string) (*filestore.Agent, error)
 }
 
@@ -484,7 +533,7 @@ func (m *mockAgentStore) GetAgentBySession(sessionID string) (*filestore.Agent, 
 
 func (m *mockAgentStore) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	if m.registerAgentFn != nil {
-		return m.registerAgentFn(agentID, tokenHash, sessionID)
+		return m.registerAgentFn(agentID, tokenHash, tokenLookup, sessionID)
 	}
 	return nil
 }

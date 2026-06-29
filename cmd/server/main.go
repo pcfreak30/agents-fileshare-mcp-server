@@ -55,9 +55,7 @@ func main() {
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    build.Name,
 		Version: build.Version,
-	}, &mcp.ServerOptions{
-		InitializedHandler: mcpserver.InitializedHandler(agents, logger),
-	})
+	}, nil)
 
 	mcpSrv.RegisterTools(mcpServer)
 
