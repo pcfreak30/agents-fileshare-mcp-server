@@ -25,6 +25,7 @@ type Store struct {
 	log  *zap.Logger
 	stmt struct {
 		registerAgent         *sql.Stmt
+		rotateAgentToken      *sql.Stmt
 		verifyAgentToken      *sql.Stmt
 		getAgentByTokenLookup  *sql.Stmt
 		getAgentBySession     *sql.Stmt
@@ -40,8 +41,10 @@ type Store struct {
 		getFileByDLToken  *sql.Stmt
 		deleteFile        *sql.Stmt
 		expireFiles       *sql.Stmt
+		expirePendingFiles *sql.Stmt
 		listAgents        *sql.Stmt
 		expiredFileIDs    *sql.Stmt
+		purgeStaleAgents  *sql.Stmt
 	}
 }
 
@@ -76,6 +79,7 @@ func NewStore(dbPath string, log *zap.Logger) (*Store, error) {
 	}
 
 	s.stmt.registerAgent = prep("INSERT INTO agents (agent_id, token_hash, token_lookup, session_id, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?)")
+	s.stmt.rotateAgentToken = prep("UPDATE agents SET token_hash = ?, token_lookup = ?, last_seen = ? WHERE agent_id = ?")
 	s.stmt.verifyAgentToken = prep("SELECT token_hash FROM agents WHERE agent_id = ?")
 	s.stmt.getAgentByTokenLookup = prep("SELECT agent_id, token_hash, session_id, created_at, last_seen FROM agents WHERE token_lookup = ?")
 	s.stmt.getAgentBySession = prep("SELECT agent_id, session_id, created_at, last_seen FROM agents WHERE session_id = ?")
@@ -91,8 +95,10 @@ func NewStore(dbPath string, log *zap.Logger) (*Store, error) {
 	s.stmt.getFileByDLToken = prep("SELECT " + fileColumns + " FROM files WHERE download_token = ? AND visibility = ?")
 	s.stmt.deleteFile = prep("UPDATE files SET status = ? WHERE file_id = ? AND agent_id = ? AND status != ?")
 	s.stmt.expireFiles = prep("UPDATE files SET status = ? WHERE expires_at <= ? AND status NOT IN (?, ?)")
+	s.stmt.expirePendingFiles = prep("UPDATE files SET status = ? WHERE status = ? AND created_at < ?")
 	s.stmt.listAgents = prep("SELECT a.agent_id, COUNT(f.file_id), COALESCE(SUM(f.size), 0), a.last_seen FROM agents a LEFT JOIN files f ON a.agent_id = f.agent_id AND f.status = ? GROUP BY a.agent_id ORDER BY a.last_seen DESC")
 	s.stmt.expiredFileIDs = prep("SELECT file_id FROM files WHERE status = ?")
+	s.stmt.purgeStaleAgents = prep("DELETE FROM agents WHERE last_seen < ? AND agent_id NOT IN (SELECT DISTINCT agent_id FROM files WHERE status IN (?, ?))")
 
 	return s, nil
 }
@@ -100,10 +106,11 @@ func NewStore(dbPath string, log *zap.Logger) (*Store, error) {
 func (s *Store) Close() error {
 	st := &s.stmt
 	for _, st := range []*sql.Stmt{
-		st.registerAgent, st.verifyAgentToken, st.getAgentByTokenLookup, st.getAgentBySession, st.getAgentByID, st.allAgents,
+		st.registerAgent, st.rotateAgentToken, st.verifyAgentToken, st.getAgentByTokenLookup, st.getAgentBySession, st.getAgentByID, st.allAgents,
 		st.updateAgentSession, st.touchAgent, st.createFile, st.completeUpload,
 		st.revertToPending, st.getFileByID, st.getFileByShareID, st.getFileByDLToken,
-		st.deleteFile, st.expireFiles, st.listAgents, st.expiredFileIDs,
+		st.deleteFile, st.expireFiles, st.expirePendingFiles, st.listAgents, st.expiredFileIDs,
+		st.purgeStaleAgents,
 	} {
 		st.Close()
 	}
@@ -117,6 +124,11 @@ func (s *Store) DB() *sql.DB {
 func (s *Store) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	now := time.Now().UTC()
 	_, err := s.stmt.registerAgent.Exec(agentID, tokenHash, tokenLookup, sessionID, now, now)
+	return err
+}
+
+func (s *Store) RotateAgentToken(agentID, tokenHash, tokenLookup string) error {
+	_, err := s.stmt.rotateAgentToken.Exec(tokenHash, tokenLookup, time.Now().UTC(), agentID)
 	return err
 }
 
@@ -410,6 +422,26 @@ func (s *Store) DeleteFile(fileID, agentID string) (bool, error) {
 
 func (s *Store) ExpireFiles() (int, error) {
 	result, err := s.stmt.expireFiles.Exec(model.StatusExpired, time.Now().UTC(), model.StatusExpired, model.StatusDeleted)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
+func (s *Store) ExpirePendingFiles(olderThan time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
+	result, err := s.stmt.expirePendingFiles.Exec(model.StatusExpired, model.StatusPending, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
+func (s *Store) PurgeStaleAgents(olderThan time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
+	result, err := s.stmt.purgeStaleAgents.Exec(cutoff, model.StatusReady, model.StatusPending)
 	if err != nil {
 		return 0, err
 	}

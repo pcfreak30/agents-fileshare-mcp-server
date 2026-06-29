@@ -52,6 +52,7 @@ func (nt NullTime) MarshalJSON() ([]byte, error) {
 
 type AgentStore interface {
 	RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error
+	RotateAgentToken(agentID, tokenHash, tokenLookup string) error
 	VerifyAnyToken(token string) (*Agent, error)
 	GetAgentBySession(sessionID string) (*Agent, error)
 }
@@ -65,7 +66,9 @@ type FileStore interface {
 	GetFileByDownloadToken(token string) (*FileMetadata, error)
 	DeleteFile(fileID, agentID string) (bool, error)
 	ExpireFiles() (int, error)
+	ExpirePendingFiles(olderThan time.Duration) (int, error)
 	GetExpiredFileIDs() ([]string, error)
+	PurgeStaleAgents(olderThan time.Duration) (int, error)
 	ListFiles(agentID string, status model.FileStatus, limit, offset int) ([]FileMetadata, int, error)
 	SearchFiles(query, agentID string, limit int) ([]FileMetadata, error)
 	ListAgents() ([]AgentInfo, error)

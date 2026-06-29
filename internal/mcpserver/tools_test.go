@@ -344,9 +344,23 @@ func TestServer_HandleWhoami_NewAgent(t *testing.T) {
 
 func TestServer_HandleWhoami_ExistingAgent(t *testing.T) {
 	store := testutil.NewTestStore()
+	var rotated bool
 	agentStore := &mockAgentStore{
 		getAgentBySessionFn: func(sessionID string) (*filestore.Agent, error) {
 			return &filestore.Agent{AgentID: "agent_existing", SessionID: sessionID}, nil
+		},
+		rotateAgentTokenFn: func(agentID, tokenHash, tokenLookup string) error {
+			rotated = true
+			if agentID != "agent_existing" {
+				t.Errorf("rotate agentID = %q, want %q", agentID, "agent_existing")
+			}
+			if tokenHash == "" {
+				t.Error("expected non-empty tokenHash on rotate")
+			}
+			if tokenLookup == "" {
+				t.Error("expected non-empty tokenLookup on rotate")
+			}
+			return nil
 		},
 	}
 	agents := agent.NewManager(agentStore)
@@ -366,8 +380,11 @@ func TestServer_HandleWhoami_ExistingAgent(t *testing.T) {
 	if out.AgentID != "agent_existing" {
 		t.Errorf("AgentID = %q, want %q", out.AgentID, "agent_existing")
 	}
-	if out.Token != "" {
-		t.Errorf("expected empty Token for existing agent, got %q", out.Token)
+	if out.Token == "" {
+		t.Error("expected non-empty Token for existing agent (rotated)")
+	}
+	if !rotated {
+		t.Error("expected RotateAgentToken to be called")
 	}
 }
 
@@ -521,6 +538,7 @@ func TestServer_HandlePrepareUpload_StoreError(t *testing.T) {
 type mockAgentStore struct {
 	getAgentBySessionFn func(sessionID string) (*filestore.Agent, error)
 	registerAgentFn     func(agentID, tokenHash, tokenLookup, sessionID string) error
+	rotateAgentTokenFn  func(agentID, tokenHash, tokenLookup string) error
 	verifyAnyTokenFn    func(token string) (*filestore.Agent, error)
 }
 
@@ -534,6 +552,13 @@ func (m *mockAgentStore) GetAgentBySession(sessionID string) (*filestore.Agent, 
 func (m *mockAgentStore) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	if m.registerAgentFn != nil {
 		return m.registerAgentFn(agentID, tokenHash, tokenLookup, sessionID)
+	}
+	return nil
+}
+
+func (m *mockAgentStore) RotateAgentToken(agentID, tokenHash, tokenLookup string) error {
+	if m.rotateAgentTokenFn != nil {
+		return m.rotateAgentTokenFn(agentID, tokenHash, tokenLookup)
 	}
 	return nil
 }

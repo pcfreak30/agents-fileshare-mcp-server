@@ -15,7 +15,8 @@ import (
 
 type mockAgentStore struct {
 	getAgentBySessionFn func(sessionID string) (*filestore.Agent, error)
-	registerAgentFn     func(agentID, tokenHash, sessionID string) error
+	registerAgentFn     func(agentID, tokenHash, tokenLookup, sessionID string) error
+	rotateAgentTokenFn  func(agentID, tokenHash, tokenLookup string) error
 	verifyAnyTokenFn    func(token string) (*filestore.Agent, error)
 }
 
@@ -28,7 +29,14 @@ func (m *mockAgentStore) GetAgentBySession(sessionID string) (*filestore.Agent, 
 
 func (m *mockAgentStore) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	if m.registerAgentFn != nil {
-		return m.registerAgentFn(agentID, tokenHash, sessionID)
+		return m.registerAgentFn(agentID, tokenHash, tokenLookup, sessionID)
+	}
+	return nil
+}
+
+func (m *mockAgentStore) RotateAgentToken(agentID, tokenHash, tokenLookup string) error {
+	if m.rotateAgentTokenFn != nil {
+		return m.rotateAgentTokenFn(agentID, tokenHash, tokenLookup)
 	}
 	return nil
 }

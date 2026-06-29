@@ -22,7 +22,9 @@ type MockFileStore struct {
 	GetFileByDownloadTokenFn func(token string) (*filestore.FileMetadata, error)
 	DeleteFileFn            func(fileID, agentID string) (bool, error)
 	ExpireFilesFn           func() (int, error)
+	ExpirePendingFilesFn    func(olderThan time.Duration) (int, error)
 	GetExpiredFileIDsFn     func() ([]string, error)
+	PurgeStaleAgentsFn      func(olderThan time.Duration) (int, error)
 	ListFilesFn             func(agentID string, status model.FileStatus, limit, offset int) ([]filestore.FileMetadata, int, error)
 	SearchFilesFn           func(query, agentID string, limit int) ([]filestore.FileMetadata, error)
 	ListAgentsFn            func() ([]filestore.AgentInfo, error)
@@ -84,11 +86,25 @@ func (m *MockFileStore) ExpireFiles() (int, error) {
 	return 0, nil
 }
 
+func (m *MockFileStore) ExpirePendingFiles(olderThan time.Duration) (int, error) {
+	if m.ExpirePendingFilesFn != nil {
+		return m.ExpirePendingFilesFn(olderThan)
+	}
+	return 0, nil
+}
+
 func (m *MockFileStore) GetExpiredFileIDs() ([]string, error) {
 	if m.GetExpiredFileIDsFn != nil {
 		return m.GetExpiredFileIDsFn()
 	}
 	return nil, nil
+}
+
+func (m *MockFileStore) PurgeStaleAgents(olderThan time.Duration) (int, error) {
+	if m.PurgeStaleAgentsFn != nil {
+		return m.PurgeStaleAgentsFn(olderThan)
+	}
+	return 0, nil
 }
 
 func (m *MockFileStore) ListFiles(agentID string, status model.FileStatus, limit, offset int) ([]filestore.FileMetadata, int, error) {
@@ -120,6 +136,8 @@ func NewTestConfig() *config.Config {
 		DefaultTTL:      72 * time.Hour,
 		MaxTTL:          168 * time.Hour,
 		CleanupInterval: 1 * time.Minute,
+		GhostFileTTL:    1 * time.Hour,
+		AgentTTL:        168 * time.Hour,
 		ShareIDLength:   8,
 		BaseURL:         "http://localhost:8080",
 		UploadRateLimit: 10,

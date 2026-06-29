@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/pcfreak30/agents-fileshare-mcp-server/internal/testutil"
 )
@@ -109,4 +110,50 @@ func TestWorker_Sweep_NoExpiredFiles(t *testing.T) {
 
 	w.sweep()
 
+}
+
+func TestWorker_Sweep_GhostFiles(t *testing.T) {
+	store := testutil.NewTestStore()
+	var gotTTL time.Duration
+	store.ExpirePendingFilesFn = func(olderThan time.Duration) (int, error) {
+		gotTTL = olderThan
+		return 3, nil
+	}
+	store.GetExpiredFileIDsFn = func() ([]string, error) { return nil, nil }
+
+	w := &Worker{
+		store: store,
+		cfg:   testutil.NewTestConfig(),
+		log:   testutil.NewTestLogger(),
+		fs:    testutil.NewMemFS(),
+	}
+
+	w.sweep()
+
+	if gotTTL != testutil.NewTestConfig().GhostFileTTL {
+		t.Errorf("ghost TTL = %v, want %v", gotTTL, testutil.NewTestConfig().GhostFileTTL)
+	}
+}
+
+func TestWorker_Sweep_PurgeStaleAgents(t *testing.T) {
+	store := testutil.NewTestStore()
+	var gotTTL time.Duration
+	store.PurgeStaleAgentsFn = func(olderThan time.Duration) (int, error) {
+		gotTTL = olderThan
+		return 5, nil
+	}
+	store.GetExpiredFileIDsFn = func() ([]string, error) { return nil, nil }
+
+	w := &Worker{
+		store: store,
+		cfg:   testutil.NewTestConfig(),
+		log:   testutil.NewTestLogger(),
+		fs:    testutil.NewMemFS(),
+	}
+
+	w.sweep()
+
+	if gotTTL != testutil.NewTestConfig().AgentTTL {
+		t.Errorf("agent TTL = %v, want %v", gotTTL, testutil.NewTestConfig().AgentTTL)
+	}
 }

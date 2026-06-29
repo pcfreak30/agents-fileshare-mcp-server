@@ -9,7 +9,8 @@ import (
 
 type mockStore struct {
 	getAgentBySessionFn func(sessionID string) (*filestore.Agent, error)
-	registerAgentFn     func(agentID, tokenHash, sessionID string) error
+	registerAgentFn     func(agentID, tokenHash, tokenLookup, sessionID string) error
+	rotateAgentTokenFn  func(agentID, tokenHash, tokenLookup string) error
 	verifyAnyTokenFn    func(token string) (*filestore.Agent, error)
 }
 
@@ -22,7 +23,14 @@ func (m *mockStore) GetAgentBySession(sessionID string) (*filestore.Agent, error
 
 func (m *mockStore) RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error {
 	if m.registerAgentFn != nil {
-		return m.registerAgentFn(agentID, tokenHash, sessionID)
+		return m.registerAgentFn(agentID, tokenHash, tokenLookup, sessionID)
+	}
+	return nil
+}
+
+func (m *mockStore) RotateAgentToken(agentID, tokenHash, tokenLookup string) error {
+	if m.rotateAgentTokenFn != nil {
+		return m.rotateAgentTokenFn(agentID, tokenHash, tokenLookup)
 	}
 	return nil
 }
@@ -35,11 +43,12 @@ func (m *mockStore) VerifyAnyToken(token string) (*filestore.Agent, error) {
 }
 
 func TestManager_RegisterOrGet_NewAgent(t *testing.T) {
-	var registeredID, registeredHash, registeredSession string
+	var registeredID, registeredHash, registeredLookup, registeredSession string
 	store := &mockStore{
-		registerAgentFn: func(agentID, tokenHash, sessionID string) error {
+		registerAgentFn: func(agentID, tokenHash, tokenLookup, sessionID string) error {
 			registeredID = agentID
 			registeredHash = tokenHash
+			registeredLookup = tokenLookup
 			registeredSession = sessionID
 			return nil
 		},
@@ -66,12 +75,22 @@ func TestManager_RegisterOrGet_NewAgent(t *testing.T) {
 	if registeredHash == "" {
 		t.Error("expected non-empty token hash")
 	}
+	if registeredLookup == "" {
+		t.Error("expected non-empty token lookup")
+	}
 }
 
 func TestManager_RegisterOrGet_ExistingAgent(t *testing.T) {
+	var rotatedID, rotatedHash, rotatedLookup string
 	store := &mockStore{
 		getAgentBySessionFn: func(sessionID string) (*filestore.Agent, error) {
 			return &filestore.Agent{AgentID: "agent_existing", SessionID: sessionID}, nil
+		},
+		rotateAgentTokenFn: func(agentID, tokenHash, tokenLookup string) error {
+			rotatedID = agentID
+			rotatedHash = tokenHash
+			rotatedLookup = tokenLookup
+			return nil
 		},
 	}
 
@@ -84,8 +103,17 @@ func TestManager_RegisterOrGet_ExistingAgent(t *testing.T) {
 	if agentID != "agent_existing" {
 		t.Errorf("agentID = %q, want %q", agentID, "agent_existing")
 	}
-	if agentToken != "" {
-		t.Errorf("agentToken = %q, want empty for existing agent", agentToken)
+	if agentToken == "" {
+		t.Error("expected non-empty agentToken for existing agent (rotated)")
+	}
+	if rotatedID != "agent_existing" {
+		t.Errorf("rotated agentID = %q, want %q", rotatedID, "agent_existing")
+	}
+	if rotatedHash == "" {
+		t.Error("expected non-empty rotated token hash")
+	}
+	if rotatedLookup == "" {
+		t.Error("expected non-empty rotated token lookup")
 	}
 }
 
@@ -105,13 +133,30 @@ func TestManager_RegisterOrGet_StoreLookupError(t *testing.T) {
 
 func TestManager_RegisterOrGet_RegisterError(t *testing.T) {
 	store := &mockStore{
-		registerAgentFn: func(agentID, tokenHash, sessionID string) error {
+		registerAgentFn: func(agentID, tokenHash, tokenLookup, sessionID string) error {
 			return errors.New("insert error")
 		},
 	}
 
 	m := NewManager(store)
 	_, _, err := m.RegisterOrGet("sess_reg_err")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestManager_RegisterOrGet_RotateError(t *testing.T) {
+	store := &mockStore{
+		getAgentBySessionFn: func(sessionID string) (*filestore.Agent, error) {
+			return &filestore.Agent{AgentID: "agent_rot_err", SessionID: sessionID}, nil
+		},
+		rotateAgentTokenFn: func(agentID, tokenHash, tokenLookup string) error {
+			return errors.New("rotate error")
+		},
+	}
+
+	m := NewManager(store)
+	_, _, err := m.RegisterOrGet("sess_rot_err")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

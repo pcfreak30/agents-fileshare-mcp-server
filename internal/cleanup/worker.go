@@ -48,10 +48,22 @@ func (w *Worker) sweep() {
 	n, err := w.store.ExpireFiles()
 	if err != nil {
 		w.log.Error("expire files error", zap.Error(err))
-		return
-	}
-	if n > 0 {
+	} else if n > 0 {
 		w.log.Info("expired files", zap.Int("count", n))
+	}
+
+	ghosts, err := w.store.ExpirePendingFiles(w.cfg.GhostFileTTL)
+	if err != nil {
+		w.log.Error("expire pending ghost files", zap.Error(err))
+	} else if ghosts > 0 {
+		w.log.Info("expired stale pending files", zap.Int("count", ghosts))
+	}
+
+	purged, err := w.store.PurgeStaleAgents(w.cfg.AgentTTL)
+	if err != nil {
+		w.log.Error("purge stale agents", zap.Error(err))
+	} else if purged > 0 {
+		w.log.Info("purged stale agents", zap.Int("count", purged))
 	}
 
 	ids, err := w.store.GetExpiredFileIDs()
