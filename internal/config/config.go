@@ -20,6 +20,7 @@ type Config struct {
 	CleanupInterval   time.Duration `koanf:"CLEANUP_INTERVAL"`
 	ShareIDLength     int           `koanf:"SHARE_ID_LENGTH"`
 	BaseURL           string        `koanf:"BASE_URL"`
+	ExternalURL       string        `koanf:"EXTERNAL_URL"`
 	UploadRateLimit   int           `koanf:"UPLOAD_RATE_LIMIT"`
 	VerifyContentType bool          `koanf:"VERIFY_CONTENT_TYPE"`
 }
@@ -39,6 +40,7 @@ func Load() *Config {
 		"cleanup_interval":   "1m",
 		"share_id_length":    8,
 		"base_url":           "http://localhost:8080",
+		"external_url":       "",
 		"upload_rate_limit":  10,
 		"verify_content_type": false,
 	}
@@ -64,6 +66,7 @@ func Load() *Config {
 		CleanupInterval:   k.Duration("cleanup_interval"),
 		ShareIDLength:     k.Int("share_id_length"),
 		BaseURL:           k.String("base_url"),
+		ExternalURL:       k.String("external_url"),
 		UploadRateLimit:   k.Int("upload_rate_limit"),
 		VerifyContentType: k.Bool("verify_content_type"),
 	}
@@ -88,5 +91,9 @@ func (c *Config) UploadURL(fileID string) string {
 }
 
 func (c *Config) DownloadURL(shareID string) string {
-	return c.BaseURL + model.RouteFile + shareID
+	base := c.ExternalURL
+	if base == "" {
+		base = c.BaseURL
+	}
+	return base + model.RouteFile + shareID
 }

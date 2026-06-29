@@ -48,3 +48,27 @@ func TestConfig_DownloadURL(t *testing.T) {
 		t.Errorf("DownloadURL = %q, want %q", got, want)
 	}
 }
+
+func TestConfig_DownloadURL_ExternalURL(t *testing.T) {
+	c := &Config{
+		BaseURL:     "http://localhost:8080",
+		ExternalURL: "http://aiderdesk.lan:3200",
+	}
+	got := c.DownloadURL("abc12345")
+	want := "http://aiderdesk.lan:3200/f/abc12345"
+	if got != want {
+		t.Errorf("DownloadURL = %q, want %q", got, want)
+	}
+}
+
+func TestConfig_UploadURL_ExternalURLDoesNotAffect(t *testing.T) {
+	c := &Config{
+		BaseURL:     "http://localhost:8080",
+		ExternalURL: "http://aiderdesk.lan:3200",
+	}
+	got := c.UploadURL("f_123")
+	want := "http://localhost:8080/upload/f_123"
+	if got != want {
+		t.Errorf("UploadURL = %q, want %q", got, want)
+	}
+}
