@@ -18,6 +18,8 @@ type Config struct {
 	DefaultTTL        time.Duration `koanf:"DEFAULT_TTL"`
 	MaxTTL            time.Duration `koanf:"MAX_TTL"`
 	CleanupInterval   time.Duration `koanf:"CLEANUP_INTERVAL"`
+	GhostFileTTL      time.Duration `koanf:"GHOST_FILE_TTL"`
+	AgentTTL          time.Duration `koanf:"AGENT_TTL"`
 	ShareIDLength     int           `koanf:"SHARE_ID_LENGTH"`
 	BaseURL           string        `koanf:"BASE_URL"`
 	ExternalURL       string        `koanf:"EXTERNAL_URL"`
@@ -38,6 +40,8 @@ func Load() *Config {
 		"default_ttl":         "72h",
 		"max_ttl":            "168h",
 		"cleanup_interval":   "1m",
+		"ghost_file_ttl":     "1h",
+		"agent_ttl":          "168h",
 		"share_id_length":    8,
 		"base_url":           "http://localhost:8080",
 		"external_url":       "",
@@ -64,6 +68,8 @@ func Load() *Config {
 		DefaultTTL:        k.Duration("default_ttl"),
 		MaxTTL:            k.Duration("max_ttl"),
 		CleanupInterval:   k.Duration("cleanup_interval"),
+		GhostFileTTL:      k.Duration("ghost_file_ttl"),
+		AgentTTL:          k.Duration("agent_ttl"),
 		ShareIDLength:     k.Int("share_id_length"),
 		BaseURL:           k.String("base_url"),
 		ExternalURL:       k.String("external_url"),

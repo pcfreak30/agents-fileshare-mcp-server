@@ -13,6 +13,7 @@ import (
 type Store interface {
 	GetAgentBySession(sessionID string) (*filestore.Agent, error)
 	RegisterAgent(agentID, tokenHash, tokenLookup, sessionID string) error
+	RotateAgentToken(agentID, tokenHash, tokenLookup string) error
 	VerifyAnyToken(token string) (*filestore.Agent, error)
 }
 
@@ -29,10 +30,8 @@ func (m *Manager) RegisterOrGet(sessionID string) (agentID, agentToken string, e
 	if err != nil {
 		return "", "", fmt.Errorf("lookup agent by session: %w", err)
 	}
-	if existing != nil {
-		return existing.AgentID, "", nil
-	}
 
+	// Generate a fresh token for both new and existing agents.
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", "", fmt.Errorf("generate token: %w", err)
@@ -44,14 +43,22 @@ func (m *Manager) RegisterOrGet(sessionID string) (agentID, agentToken string, e
 		return "", "", fmt.Errorf("hash token: %w", err)
 	}
 
+	lookupHash := sha256.Sum256([]byte(agentToken))
+	tokenLookup := hex.EncodeToString(lookupHash[:])
+
+	if existing != nil {
+		// Rotate token for existing agent — always return a usable token.
+		if err := m.store.RotateAgentToken(existing.AgentID, string(hash), tokenLookup); err != nil {
+			return "", "", fmt.Errorf("rotate agent token: %w", err)
+		}
+		return existing.AgentID, agentToken, nil
+	}
+
 	idBytes := make([]byte, 4)
 	if _, err := rand.Read(idBytes); err != nil {
 		return "", "", fmt.Errorf("generate id: %w", err)
 	}
 	agentID = "agent_" + hex.EncodeToString(idBytes)
-
-	lookupHash := sha256.Sum256([]byte(agentToken))
-	tokenLookup := hex.EncodeToString(lookupHash[:])
 
 	if err := m.store.RegisterAgent(agentID, string(hash), tokenLookup, sessionID); err != nil {
 		return "", "", fmt.Errorf("register agent: %w", err)
